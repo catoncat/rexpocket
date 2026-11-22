@@ -249,4 +249,15 @@
     <string name="keybar_alt">显示 Alt 键</string>
     <string name="keybar_visible">显示</string>
     <string name="keybar_hidden">隐藏</string>
+
+    <string name="settings_group_appearance">外观</string>
+    <string name="theme_title">主题</string>
+    <string name="theme_system">跟随系统</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
+
+    <string name="tailscale_relogin">切换账号 / 重新登录</string>
+    <plurals name="tailscale_peers_count">
+        <item quantity="other">%1$d 台设备</item>
+    </plurals>
 </resources>

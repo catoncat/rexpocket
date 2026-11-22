@@ -146,9 +146,48 @@ class TerminalImeTest {
             ic.deleteSurroundingText(1, 0)
             assertEquals("abc", sent.toString())
 
+            ic.setComposingText("", 1)
             ic.finishComposingText()
             ic.deleteSurroundingText(1, 0)
             assertEquals("abc\u007f", sent.toString())
+        }
+    }
+
+    /** Voice IMEs stream recognized text into composing and finalize with finishComposingText(). */
+    @Test
+    fun voiceInputFinishComposingCommitsText() {
+        onMain {
+            val ic = connect()
+            ic.setComposingText("你好世界", 1)
+            assertEquals("", sent.toString())
+
+            ic.finishComposingText()
+            assertEquals("你好世界", sent.toString())
+
+            ic.finishComposingText()
+            assertEquals("你好世界", sent.toString())
+        }
+    }
+
+    /** Pressing the IME action key while voice text is still composing flushes it before Enter. */
+    @Test
+    fun performEditorActionFlushesComposingBeforeEnter() {
+        onMain {
+            val ic = connect()
+            ic.setComposingText("echo ok", 1)
+            ic.performEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
+            assertEquals("echo ok\r", sent.toString())
+        }
+    }
+
+    /** Losing the connection mid-composition drops partial IME text rather than sending it. */
+    @Test
+    fun closingConnectionDropsUnfinishedComposing() {
+        onMain {
+            val ic = connect()
+            ic.setComposingText("ㄨㄛ", 1)
+            ic.closeConnection()
+            assertEquals("", sent.toString())
         }
     }
 

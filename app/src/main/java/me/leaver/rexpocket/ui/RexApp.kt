@@ -50,6 +50,7 @@ fun RexPocketApp(model: RexViewModel = viewModel()) {
     val font by model.fontScale.collectAsState()
     val terminalTypeface by model.terminalTypeface.collectAsState()
     val terminalFont by model.terminalFont.collectAsState()
+    val themeMode by model.themeMode.collectAsState()
     var fontSettingsOpen by remember { mutableStateOf(false) }
     val tailscale by model.tailscale.collectAsState()
     val tailscaleStatus by model.tailscaleStatus.collectAsState()
@@ -97,7 +98,7 @@ fun RexPocketApp(model: RexViewModel = viewModel()) {
         if (authUrl.isBlank()) return@LaunchedEffect
         openLink(context, authUrl)
     }
-    RexTheme {
+    RexTheme(mode = themeMode) {
         Box(Modifier.fillMaxSize().background(Colors.bg)) {
             val window = windowSize()
             // A tablet or a desk window keeps the list beside the pane: a session or a tab is
@@ -134,6 +135,8 @@ fun RexPocketApp(model: RexViewModel = viewModel()) {
                     onKeyBarAlt = model::setKeyBarAlt,
                     keyBar = keyBar,
                     onKeyBar = model::setKeyBar,
+                    themeMode = themeMode,
+                    onThemeMode = model::setThemeMode,
                     onFontSettings = { fontSettingsOpen = true },
                     onDiagnosticsReport = { limit -> model.diagnosticReport(limit) },
                     update = update,
@@ -209,12 +212,14 @@ fun RexPocketApp(model: RexViewModel = viewModel()) {
             TailscaleDialog(
                 initial = tailscale,
                 status = tailscaleStatus,
+                hasSavedLogin = model.hasTailscaleLogin(),
                 error = tailnetError,
                 onDismiss = { tailscaleOpen = false },
                 onJoin = { name ->
                     model.joinTailnet(name)
                     tailscaleOpen = false
                 },
+                onRelogin = { name -> model.reloginTailnet(name) },
                 onLeave = {
                     model.leaveTailnet()
                     tailscaleOpen = false

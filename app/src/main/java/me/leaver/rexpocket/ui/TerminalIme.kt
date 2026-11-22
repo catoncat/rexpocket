@@ -91,6 +91,15 @@ internal class TerminalImeView(context: Context) : View(context) {
      */
     private inner class TerminalInputConnection : BaseInputConnection(this@TerminalImeView, false) {
         private val composing = StringBuilder()
+        private var closing = false
+
+        private fun commitBufferedComposing() {
+            if (closing || composing.isEmpty()) return
+            val text = composing.toString()
+            composing.setLength(0)
+            showComposing("")
+            pane?.sendText(text)
+        }
 
         override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
             composing.setLength(0)
@@ -113,15 +122,21 @@ internal class TerminalImeView(context: Context) : View(context) {
         }
 
         override fun finishComposingText(): Boolean {
-            composing.setLength(0)
-            showComposing("")
+            commitBufferedComposing()
             return true
         }
 
         override fun closeConnection() {
-            composing.setLength(0)
-            showComposing("")
-            super.closeConnection()
+            // BaseInputConnection.closeConnection() internally invokes finishComposingText(); drop
+            // unfinished composing first and guard re-entry so focus loss never leaks partial input.
+            closing = true
+            try {
+                composing.setLength(0)
+                showComposing("")
+                super.closeConnection()
+            } finally {
+                closing = false
+            }
         }
 
         override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean =
@@ -154,6 +169,7 @@ internal class TerminalImeView(context: Context) : View(context) {
         }
 
         override fun performEditorAction(actionCode: Int): Boolean {
+            commitBufferedComposing()
             key(KeyEvent.KEYCODE_ENTER)
             return true
         }

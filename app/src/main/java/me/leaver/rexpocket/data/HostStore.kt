@@ -2,6 +2,7 @@ package me.leaver.rexpocket.data
 
 import android.content.Context
 import me.leaver.rexpocket.core.ListedSession
+import me.leaver.rexpocket.ui.ThemeMode
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -184,6 +185,15 @@ class HostStore(context: Context) {
         prefs.edit().putFloat(KEY_FONT, scale.coerceIn(0.7f, 1.8f)).apply()
     }
 
+    fun themeMode(): ThemeMode {
+        val raw = prefs.getString(KEY_THEME_MODE, null)
+        return ThemeMode.entries.firstOrNull { it.name == raw } ?: ThemeMode.System
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
+    }
+
     private fun write(hosts: List<SavedHost>) {
         val arr = JSONArray()
         hosts.forEach { h ->
@@ -215,6 +225,7 @@ class HostStore(context: Context) {
         private const val KEY_KEY_BAR_ALT = "keybar_alt"
         private const val KEY_TAILSCALE_ENABLED = "tailscale_enabled"
         private const val KEY_TAILSCALE_HOSTNAME = "tailscale_hostname"
+        private const val KEY_THEME_MODE = "theme_mode"
         fun newId(): String = UUID.randomUUID().toString()
         private fun lastKey(id: String) = "last:$id"
         private fun panesKey(id: String) = "panes:$id"

@@ -113,6 +113,8 @@ def main():
             env.pop(name, None)
     # Ghostty's Zig dependencies stay with this build, not in the user's shared ~/.cache/zig.
     env.setdefault("ZIG_GLOBAL_CACHE_DIR", str(BUILD / "zig-cache"))
+    # Keep Ghostty's git version probe from walking up into rexpocket's .git (e.g., on tagged commits).
+    env["GIT_CEILING_DIRECTORIES"] = str(cache.resolve())
 
     zig_build = [zig_root / "zig", "build", "-Demit-lib-vt", "-Demit-macos-app=false", "-Demit-xcframework=false",
                  "-Doptimize=ReleaseFast"]

@@ -34,6 +34,8 @@ data class TailscaleStatus(
     val text: String = "",
     val authUrl: String = "",
     val networkName: String = "",
+    val selfName: String = "",
+    val peerCount: Int = 0,
 )
 
 class TailscaleException(message: String, cause: Throwable? = null) : Exception(message, cause)
@@ -178,6 +180,25 @@ class TailscaleBox(private val context: Context) {
         runCatching { stopLocked() }.onFailure { Diagnostics.event(LOG_TAG, "stop failed: ${it.message}") }
     }
 
+    /** Returns whether persisted tsnet login state exists on disk (even while stopped). */
+    fun hasSavedLogin(): Boolean = hasTailscaleStateFile(stateDirectory())
+
+    /**
+     * Stops the running node cleanly and deletes its persisted tsnet state so the next start
+     * opens a fresh interactive login without wiping saved Rex hosts or app settings.
+     */
+    @Synchronized
+    fun clearLoginState(): Boolean {
+        if (node != null) Diagnostics.event(LOG_TAG, "clearing tailnet login state on port $port")
+        val stopped = runCatching { stopLocked() }
+            .onFailure { Diagnostics.event(LOG_TAG, "stop before clear failed: ${it.message}") }
+            .isSuccess
+        if (!stopped) return false
+        val cleared = clearTailscaleStateDir(stateDirectory()) && !hasSavedLogin()
+        Diagnostics.event(LOG_TAG, "cleared tailnet state directory: $cleared")
+        return cleared
+    }
+
     /**
      * Stops the node off the caller's thread; closing it talks to the control plane. A failure
      * here must not reach the default handler: that would kill the app over a stop it wanted.
@@ -224,6 +245,8 @@ class TailscaleBox(private val context: Context) {
                 backendState = o.optString("backendState"),
                 authUrl = o.optString("authUrl"),
                 networkName = o.optString("tailnet"),
+                selfName = o.optString("self"),
+                peerCount = list.length(),
             )
             if (next.copy(authUrl = "") != _status.value.copy(authUrl = "")) {
                 Diagnostics.event(LOG_TAG, "node state ${next.backendState} peers=${list.length()}".trim())
@@ -374,3 +397,14 @@ fun sanitizeHostname(raw: String): String = raw.lowercase()
 fun defaultHostname(): String = sanitizeHostname(
     listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString("-"),
 ).ifBlank { "rexpocket" }
+
+/**
+ * Checks whether [dir] contains a non-empty persisted node state file (ignoring `logs`, `tmp`,
+ * and `home` subdirectories created during startup before login finishes).
+ */
+internal fun hasTailscaleStateFile(dir: File): Boolean =
+    dir.listFiles()?.any { it.isFile && it.length() > 0L } == true
+
+/** Deletes [dir] and all cached tsnet node state inside it; returns true if [dir] is gone. */
+internal fun clearTailscaleStateDir(dir: File): Boolean =
+    if (!dir.exists()) true else dir.deleteRecursively()

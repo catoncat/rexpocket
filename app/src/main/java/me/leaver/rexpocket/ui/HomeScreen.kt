@@ -102,7 +102,7 @@ import me.leaver.rexpocket.net.TailscaleStatus
 // slots flush with the right edge, so a menu, a fold and a row's chevron share one centre line.
 
 /** Where the credit for the interface goes; the README carries the long version. */
-private const val SOURCE_URL = "https://github.com/leizhiyuan/rexpocket"
+private const val SOURCE_URL = "https://github.com/catoncat/rexpocket"
 
 /** The page margin: the cards and the floating controls stand this far from the screen's edge. */
 private val PAGE = 16.dp
@@ -166,6 +166,8 @@ internal fun HomeScreen(
     /** True when the key bar is kept on screen with a keyboard attached, which is not the default. */
     keyBar: Boolean,
     onKeyBar: (Boolean) -> Unit,
+    themeMode: ThemeMode,
+    onThemeMode: (ThemeMode) -> Unit,
     onFontSettings: () -> Unit,
     /** Builds the diagnostics report when the person asks for one, kept to [limit] characters. */
     onDiagnosticsReport: (limit: Int) -> String,
@@ -415,6 +417,8 @@ internal fun HomeScreen(
             onKeyBarAlt = onKeyBarAlt,
             keyBar = keyBar,
             onKeyBar = onKeyBar,
+            themeMode = themeMode,
+            onThemeMode = onThemeMode,
             onFontSettings = onFontSettings,
             recording = recording,
             onDiagnostics = {
@@ -811,6 +815,8 @@ private fun SettingsSheet(
     /** True when the key bar is kept on screen with a keyboard attached, which is not the default. */
     keyBar: Boolean,
     onKeyBar: (Boolean) -> Unit,
+    themeMode: ThemeMode,
+    onThemeMode: (ThemeMode) -> Unit,
     onFontSettings: () -> Unit,
     recording: Boolean,
     onDiagnostics: () -> Unit,
@@ -848,6 +854,21 @@ private fun SettingsSheet(
                 detail = stringResource(if (alerts) R.string.alerts_on else R.string.alerts_off),
                 keepOpen = true,
                 onClick = onAlerts,
+            )
+        }
+        Group(stringResource(R.string.settings_group_appearance)) {
+            SheetItem(
+                label = stringResource(R.string.theme_title),
+                icon = R.drawable.ic_swap,
+                detail = stringResource(
+                    when (themeMode) {
+                        ThemeMode.System -> R.string.theme_system
+                        ThemeMode.Light -> R.string.theme_light
+                        ThemeMode.Dark -> R.string.theme_dark
+                    },
+                ),
+                keepOpen = true,
+                onClick = { onThemeMode(themeMode.next()) },
             )
         }
         Group(stringResource(R.string.settings_group_terminal)) {
@@ -962,9 +983,11 @@ internal fun tailnetState(status: TailscaleStatus): String = when (status.backen
 internal fun TailscaleDialog(
     initial: TailscaleSettings,
     status: TailscaleStatus,
+    hasSavedLogin: Boolean = false,
     error: String?,
     onDismiss: () -> Unit,
     onJoin: (String) -> Unit,
+    onRelogin: (String) -> Unit = {},
     onLeave: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -981,14 +1004,29 @@ internal fun TailscaleDialog(
             ) {
                 Field(stringResource(R.string.tailscale_hostname), hostname) { hostname = it }
                 if (initial.enabled) {
+                    val peerDetail = if (status.backendState == "Running") {
+                        pluralStringResource(R.plurals.tailscale_peers_count, status.peerCount, status.peerCount)
+                    } else {
+                        null
+                    }
                     Text(
                         listOfNotNull(
                             state.ifBlank { null },
                             status.networkName.ifBlank { null },
+                            status.selfName.ifBlank { null },
+                            peerDetail,
                         ).joinToString(" · ").ifBlank { stringResource(R.string.tailscale_state_starting) },
                         color = if (status.backendState == "Running") Colors.accent else Colors.amber,
                         fontSize = TextStyles.label,
                     )
+                }
+                if (initial.enabled || hasSavedLogin) {
+                    TextButton(
+                        onClick = { onRelogin(hostname) },
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Text(stringResource(R.string.tailscale_relogin), color = Colors.accent)
+                    }
                 }
                 error?.let { Text(it, color = Colors.danger, fontSize = TextStyles.label) }
                 if (status.authUrl.isNotBlank()) {

@@ -54,12 +54,15 @@ import me.leaver.rexpocket.update.UpdateState
 import me.leaver.rexpocket.update.Updater
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -126,6 +129,7 @@ class RexViewModel(app: Application) : AndroidViewModel(app) {
     private val _pocket = MutableStateFlow(PocketState())
     val pocket: StateFlow<PocketState> = _pocket
     val fontScale = MutableStateFlow(store.fontScale())
+    val themeMode = MutableStateFlow(store.themeMode())
     private val fontRoot = File(app.filesDir, "terminal-fonts")
     private val fontFiles = FontCatalog.fonts.associate { it.id to FontFiles(fontRoot, it) }
     private val fontFaces = mutableMapOf<String, Typeface>()
@@ -190,6 +194,7 @@ class RexViewModel(app: Application) : AndroidViewModel(app) {
     private var watch: Job? = null
     private var connectJob: Job? = null
     private var tailnetJob: Job? = null
+    private val tailnetMutex = Mutex()
     private val _tailnetError = MutableStateFlow<String?>(null)
     val tailnetError: StateFlow<String?> = _tailnetError
 
@@ -287,41 +292,76 @@ class RexViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
     }
 
+    fun hasTailscaleLogin(): Boolean = tailscaleBox.hasSavedLogin()
+
     /**
      * Joins the tailnet under [hostname] (blank means the device's own name). The node starts here,
      * not on the first connect, so the app can hand out the login link while the user is looking
      * at the Tailscale row; a node that is already logged in just comes back up.
      */
     fun joinTailnet(hostname: String) {
-        Diagnostics.event(CONN_TAG, "joining the tailnet as ${hostname.trim().ifBlank { "default" }}")
-        store.setTailscale(TailscaleSettings(enabled = true, hostname = hostname.trim()))
-        val next = store.tailscale()
-        val changed = next != tailscale.value
-        tailscale.value = next
-        if (changed) tailscaleBox.stopAsync()
-        startTailnet(next)
+        val clean = hostname.trim()
+        Diagnostics.event(CONN_TAG, "joining the tailnet as ${clean.ifBlank { "default" }}")
+        runTailnetTask {
+            val current = tailscale.value
+            val changed = clean != current.hostname || !current.enabled
+            val next = saveTailscaleLocked(enabled = true, hostname = clean)
+            if (changed) tailscaleBox.stop()
+            startTailnetLocked(next)
+        }
+    }
+
+    /**
+     * Stops the current node, deletes cached Tailscale login state while keeping saved Rex hosts,
+     * and starts a fresh node so the browser OAuth sign-in flow opens again.
+     */
+    fun reloginTailnet(hostname: String) {
+        val clean = hostname.trim()
+        Diagnostics.event(CONN_TAG, "re-logging into the tailnet as ${clean.ifBlank { "default" }}")
+        runTailnetTask {
+            if (!tailscaleBox.clearLoginState()) {
+                _tailnetError.value = "Could not clear previous Tailscale login state"
+                return@runTailnetTask
+            }
+            val next = saveTailscaleLocked(enabled = true, hostname = clean)
+            startTailnetLocked(next)
+        }
+    }
+
+    private fun saveTailscaleLocked(enabled: Boolean, hostname: String): TailscaleSettings {
+        store.setTailscale(TailscaleSettings(enabled = enabled, hostname = hostname))
+        return store.tailscale().also { tailscale.value = it }
     }
 
     /** Brings the node up for [settings]; the login it already has makes this a plain restart. */
     private fun startTailnet(settings: TailscaleSettings) {
-        tailnetJob?.cancel()
-        _tailnetError.value = null
+        runTailnetTask { startTailnetLocked(settings) }
+    }
+
+    private fun runTailnetTask(action: suspend () -> Unit) {
+        val previous = tailnetJob
         tailnetJob = viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                runCatching { tailscaleBox.start(TailscaleConfig(authKey = "", hostname = settings.hostname)) }
-                    .onFailure { _tailnetError.value = it.message ?: "Tailscale could not start" }
+            previous?.join()
+            tailnetMutex.withLock {
+                _tailnetError.value = null
+                withContext(Dispatchers.IO) { action() }
             }
         }
+    }
+
+    private fun startTailnetLocked(settings: TailscaleSettings) {
+        runCatching { tailscaleBox.start(TailscaleConfig(authKey = "", hostname = settings.hostname)) }
+            .onFailure { _tailnetError.value = it.message ?: "Tailscale could not start" }
     }
 
     /** Leaves the tailnet: the node stops and its login stays in the app for the next join. */
     fun leaveTailnet() {
         Diagnostics.event(CONN_TAG, "leaving the tailnet")
         // The name is kept: rejoining later should not ask for it again.
-        store.setTailscale(TailscaleSettings(enabled = false, hostname = tailscale.value.hostname))
-        tailscale.value = store.tailscale()
-        tailnetJob?.cancel()
-        tailscaleBox.stopAsync()
+        runTailnetTask {
+            saveTailscaleLocked(enabled = false, hostname = tailscale.value.hostname)
+            tailscaleBox.stop()
+        }
     }
 
     fun saveHost(host: SavedHost) {
@@ -836,6 +876,11 @@ class RexViewModel(app: Application) : AndroidViewModel(app) {
         val next = scale.coerceIn(0.7f, 1.8f)
         fontScale.value = next
         store.setFontScale(next)
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        themeMode.value = mode
+        store.setThemeMode(mode)
     }
 
     /**

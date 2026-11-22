@@ -196,15 +196,33 @@ object Colors {
     }
 }
 
+/** User-selectable appearance mode: follows the system by default, or forces light/dark. */
+enum class ThemeMode {
+    System,
+    Light,
+    Dark;
+
+    fun next(): ThemeMode = when (this) {
+        System -> Light
+        Light -> Dark
+        Dark -> System
+    }
+}
+
 /**
- * Picks the palette from the phone's appearance and keeps the system bars in step with it. The
- * Material theme under it carries the same colours, so the platform's own pieces - the ripple on a
- * press, a dialog, a menu - look like the rest of the app.
+ * Picks the palette from [mode] (or the phone's appearance when [ThemeMode.System]) and keeps the
+ * system bars in step with it. The Material theme under it carries the same colours, so the
+ * platform's own pieces - the ripple on a press, a dialog, a menu - look like the rest of the app.
  */
 @Composable
-fun RexTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+fun RexTheme(mode: ThemeMode = ThemeMode.System, content: @Composable () -> Unit) {
+    val dark = when (mode) {
+        ThemeMode.System -> isSystemInDarkTheme()
+        ThemeMode.Light -> false
+        ThemeMode.Dark -> true
+    }
     val p = if (dark) Dark else Light
+    Colors.use(dark)
     val scheme = if (dark) {
         darkColorScheme(
             primary = p.accent, onPrimary = p.onAccent, background = p.bg, onBackground = p.ink,
@@ -222,7 +240,6 @@ fun RexTheme(content: @Composable () -> Unit) {
     }
     val view = LocalView.current
     SideEffect {
-        Colors.use(dark)
         val window = view.context.findActivity()?.window ?: return@SideEffect
         WindowCompat.getInsetsController(window, view).apply {
             isAppearanceLightStatusBars = !dark

@@ -253,4 +253,16 @@
     <string name="keybar_alt">Show Alt key</string>
     <string name="keybar_visible">Shown</string>
     <string name="keybar_hidden">Hidden</string>
+
+    <string name="settings_group_appearance">Appearance</string>
+    <string name="theme_title">Theme</string>
+    <string name="theme_system">Follow system</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+
+    <string name="tailscale_relogin">Switch account / Re-login</string>
+    <plurals name="tailscale_peers_count">
+        <item quantity="one">%1$d peer</item>
+        <item quantity="other">%1$d peers</item>
+    </plurals>
 </resources>
